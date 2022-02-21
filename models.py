@@ -20,13 +20,14 @@ class MyModel(nn.Module):
         self.loss_fn 
         self.accumulative_step
 
-        # -----------------------------Metric---------------------------- #
+        # -----------------------------Scheduler---------------------------- #
+        self.scheduler = hparams.SchedulerClass(self.optimizer, **hparams.scheduler_params) # scheduler
 
+
+        # -----------------------------Metric---------------------------- #
         self.loss_meters = {'loss' : AverageMeter()}
 
         # -----------------------------Mixed Precision---------------------------- #
-
-
         self.scaler = GradScaler()
 
 
@@ -57,7 +58,8 @@ class MyModel(nn.Module):
         # gradient accumulation 
         if not (iter + 1) % self.accumulative_step: 
             #self.optimizer.step() 
-            self.scaler.step(self.optimizer) # mixed precision          
+            self.scaler.step(self.optimizer) # mixed precision       
+            self.scaler.update()   
             self.optimizer.zero_grad()
 
         self.loss_log(loss, batch[0].size(0) )

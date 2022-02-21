@@ -1,0 +1,9 @@
+# 
+wandb/
+models/
+mnist_784/
+__pycache__/
+
+# log
+log.txt
+

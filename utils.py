@@ -9,6 +9,26 @@ from datetime import datetime
 
 import torch
 
+class Logger:
+    def __init__(self, log_path, verbose = True):
+        self.log_path =log_path
+        self.verbose = verbose
+        
+
+    def log(self, message):
+        if self.verbose:
+            print(message)
+        with open(self.log_path, 'a+') as logger:
+            logger.write(f'{message}\n')
+
+
+    def loss_dict_log(self, loss_dict, set_name):
+
+        message = set_name.upper() + " "
+        for k, v in loss_dict.items():
+            message += f"{k.replace(set_name.upper() + '_', '')} : {v:.5f} "
+
+        return message
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -48,14 +68,19 @@ class Fitter:
         self.best_summary_loss = 10**5
 
         # path
-        self.model_path = f'{self.save_path}/models'
+        self.model_path = os.path.join(config.save_path[0], 'models')
         if not os.path.exists(self.model_path):
             os.makedirs(self.model_path)
 
+        # wandb error issue.. 
+        self.logger = Logger(config.log_path)
         
 
-        #self.model_id  = f"{type(self.model).__name__}_{datetime.now().strftime('%m%d')}{str(int(datetime.now().strftime('%H')) + 9).zfill(2)}"
-
+        if config.model_id == '':
+            self.model_id  = f"{type(self.model).__name__}_{datetime.now().strftime('%m%d')}{str(int(datetime.now().strftime('%H')) + 9).zfill(2)}"
+        
+        else:
+            self.model_id = config.model_id
     def loop_indicator(self, e, val_loss):
 
         if self.best_summary_loss > val_loss:
@@ -79,43 +104,69 @@ class Fitter:
         else: 
             return False
 
-    def fit(self, train_loader, valid_loader = None):
+    def fit(self, train_loader, valid_loader, use_wandb = False):
+
+        if use_wandb:
+
+            run = wandb.init(
+                # Set the project where this run will be logged
+                project= self.config.project, # 이름 바꾸기
+                # Track hyperparameters and run metadata
+                config=self.config)
+
+            for e in range(self.epochs):
+
+                start = time.time()
+
+                train_loss_dict  = self.train_one_epoch(train_loader)
+                valid_loss_dict = self.validate(valid_loader)
+                
+                self.logger.loss_dict_log( e, {'train' : train_loss_dict, 'valid' : valid_loss_dict }, start  )
+
+                train_loss_dict.update(valid_loss_dict)
+
+                wandb.log(train_loss_dict)
 
 
-        wandb.init(
-            # Set the project where this run will be logged
-            project="basic-intro", # 이름 바꾸기
-            # Track hyperparameters and run metadata
-            config=self.config)
+                if self.warmup_steps <= e:
+                    try:
+                        self.scheduler.step(valid_loss_dict['loss'])
+                    except:
+                        assert 1 == 0, 'No scheduler'
+                if self.loop_indicator(e, valid_loss_dict['loss']):
+                    self.logger.log('Early Stop')
+                    run.finish()
+                    break
+                
 
-        for e in range(self.epochs):
-
-            start = time.time()
-
-            train_loss_dict  = self.train_one_epoch(train_loader)
-            valid_loss_dict = self.validate(valid_loader)
+            run.finish()
             
-            self.logger.loss_dict_log( e, {'train' : train_loss_dict, 'valid' : valid_loss_dict }, start  )
-
-            train_loss_dict.update(valid_loss_dict)
-
-            wandb.log(train_loss_dict)
-
-
-            if self.warmup_steps <= e:
-                try:
-                    self.scheduler.step(valid_loss_dict['loss'])
-                except:
-                    assert 1 == 0, 'No scheduler'
-            if self.loop_indicator(e, valid_loss_dict['loss']):
-                self.logger.log('Early Stop')
-                wandb.finish()
-                break
+        else:
             
+            for e in range(self.epochs):
 
-        wandb.finish()
-         
+                start = time.time()
 
+                train_loss_dict  = self.train_one_epoch(train_loader)
+                valid_loss_dict = self.validate(valid_loader)
+
+                message = f'[Epoch {e}]'
+                message += self.logger.loss_dict_log(train_loss_dict, 'train')
+                message += self.logger.loss_dict_log(valid_loss_dict, 'valid')
+                message += f'Time : {time.time() - start:.5f} s'
+
+                self.logger.log(message)
+
+                if self.warmup_steps <= e:
+                    try:
+                        self.scheduler.step(valid_loss_dict['VALID_loss'])
+                    except:
+                        pass
+                        #assert 1 == 0, 'No scheduler'
+                if self.loop_indicator(e, valid_loss_dict['VALID_loss']):
+                    break
+                
+            self.logger.log('Finished')           
 
     def train_one_epoch(self, loader):
 
@@ -129,7 +180,7 @@ class Fitter:
             self.model.optimize(batch, i)
 
         
-        return self.model.loss_dict()
+        return self.model.loss_dict(set_name = 'train')
 
 
     def validate(self, loader):
@@ -140,7 +191,7 @@ class Fitter:
         for i, batch in enumerate(loader):
             with torch.no_grad():
                 self.model.validate(batch)
-        return self.model.loss_dict()
+        return self.model.loss_dict(set_name = 'valid')
 
     def save(self, path):
         self.model.eval()
