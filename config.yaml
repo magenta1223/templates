@@ -10,6 +10,18 @@ initial_learning_rate: 0.001
 device: 'cpu'
 
 
+max_grad_norm : 0
+epochs : 20
+
+accumulative_step : 1 # no gradient accumulation
+early_stop_rounds : 10
+warmup_steps : 1
+save_point : 5
+
+project : 'YOUR PROJECT'
+
+
+
 ### setting
 
 model_id : ''
