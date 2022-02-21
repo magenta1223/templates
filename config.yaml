@@ -1,0 +1,11 @@
+### Example
+
+layers: 4
+
+### Optimizer
+optimizer: 'Adam'
+initial_learning_rate: 0.001
+
+### Training
+device: 'cpu'
+
