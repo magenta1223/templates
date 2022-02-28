@@ -12,22 +12,22 @@ class MyModel(nn.Module):
     def __init__(self, hparams):
         super(MyModel, self).__init__()
 
-        # -----------------------------MODEL--------------------------- #    
+        # -------------------------------MODEL------------------------------- #    
     
         
-        # -----------------------------Optimizer---------------------------- #
+        # -------------------------------Optimizer--------------------------- #
         self.optimizer  
         self.loss_fn 
         self.accumulative_step
 
-        # -----------------------------Scheduler---------------------------- #
+        # -------------------------------Scheduler--------------------------- #
         self.scheduler = hparams.SchedulerClass(self.optimizer, **hparams.scheduler_params) # scheduler
 
 
-        # -----------------------------Metric---------------------------- #
+        # -------------------------------Metric------------------------------ #
         self.loss_meters = {'loss' : AverageMeter()}
 
-        # -----------------------------Mixed Precision---------------------------- #
+        # -------------------------------Mixed Precision--------------------- #
         self.scaler = GradScaler()
 
 
@@ -38,7 +38,7 @@ class MyModel(nn.Module):
         
 
     def optimize(self, batch, iter):
-        # -------------- Train ----------------- # 
+        # -------------------------------TRAIN------------------------------- #
 
         inputs, targets = batch
 
@@ -51,7 +51,7 @@ class MyModel(nn.Module):
             loss = self.loss_fn(out, targets ) / self.accumulative_step
 
 
-        # ----------- DO NOT EDIT ------------ # 
+        # -------------------------------DO NOT EDIT------------------------- #
         self.scaler.scale(loss).backward() # mixed precision
 
 
@@ -66,7 +66,7 @@ class MyModel(nn.Module):
 
 
     def validate(self, batch):
-        # -------------- validate ----------------- # 
+        # -------------------------------VALIDATE--------------------------- #
         batch = batch.cuda()
         inputs, targets = batch
         out = self(inputs) 
@@ -74,7 +74,7 @@ class MyModel(nn.Module):
         self.loss_log(loss, batch[0].size(0) )
 
 
-    # --------------- DO NOT EDIT ----------------- #
+        # -------------------------------DO NOT EDIT------------------------- #
     def loss_log(self, loss, batch_size, key = 'loss'):
         self.loss_meters[key].update(loss.item() * self.accumulative_step, batch_size )
 

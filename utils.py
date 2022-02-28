@@ -1,13 +1,15 @@
-from multiprocessing.spawn import import_main_path
-
-
 import os
-from glob import glob
-import wandb
 import time
 from datetime import datetime
+from glob import glob
+from multiprocessing.spawn import import_main_path
 
+import librosa
+import numpy as np
 import torch
+
+import wandb
+
 
 class Logger:
     def __init__(self, log_path, verbose = True):
@@ -29,6 +31,7 @@ class Logger:
             message += f"{k.replace(set_name.upper() + '_', '')} : {v:.5f} "
 
         return message
+
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -55,14 +58,15 @@ class Fitter:
         self.prep(config)
 
     def prep(self, config):
-        '''
-        모델 훈련에 필요한 모든 것
-        '''
+        """
+        Prepare for fitting
+        """
         self.config = config # for save
 
-        # configuration setting
+        # configuration setting except scheduler
         for k, v in config.items():
-            setattr(self, k, v)
+            if 'schedule' not in k:
+                setattr(self, k, v)
 
         #self.early_stop = 0
         self.best_summary_loss = 10**5
@@ -74,13 +78,13 @@ class Fitter:
 
         # wandb error issue.. 
         self.logger = Logger(config.log_path)
-        
 
         if config.model_id == '':
             self.model_id  = f"{type(self.model).__name__}_{datetime.now().strftime('%m%d')}{str(int(datetime.now().strftime('%H')) + 9).zfill(2)}"
         
         else:
             self.model_id = config.model_id
+
     def loop_indicator(self, e, val_loss):
 
         if self.best_summary_loss > val_loss:
@@ -89,11 +93,11 @@ class Fitter:
             self.early_stop = 0
             self.best_e = e
 
-        # save
-        if e > self.save_point:
-            self.save(f'{self.model_path}/{self.model_id}_{str(e).zfill(3)}epoch.bin')
-            for path in sorted(glob(f'{self.model_path}/{self.model_id}_*epoch.bin'))[:-1]:
-                os.remove(path)
+            # save
+            if e > self.save_point:
+                self.save(f'{self.model_path}/{self.model_id}_{str(e).zfill(3)}epoch.bin')
+                for path in sorted(glob(f'{self.model_path}/{self.model_id}_*epoch.bin'))[:-1]:
+                    os.remove(path)
         else:
             # early stop
             self.early_stop += 1
@@ -104,13 +108,12 @@ class Fitter:
         else: 
             return False
 
-    def fit(self, train_loader, valid_loader, use_wandb = False):
+    def fit(self, train_loader, valid_loader, use_wandb = True):
 
         if use_wandb:
-
             run = wandb.init(
                 # Set the project where this run will be logged
-                project= self.config.project, # 이름 바꾸기
+                project= self.config.project, 
                 # Track hyperparameters and run metadata
                 config=self.config)
 
@@ -121,26 +124,20 @@ class Fitter:
                 train_loss_dict  = self.train_one_epoch(train_loader)
                 valid_loss_dict = self.validate(valid_loader)
                 
-                self.logger.loss_dict_log( e, {'train' : train_loss_dict, 'valid' : valid_loss_dict }, start  )
-
                 train_loss_dict.update(valid_loss_dict)
 
                 wandb.log(train_loss_dict)
 
 
                 if self.warmup_steps <= e:
-                    try:
+                    if self.model.scheduler:
                         self.scheduler.step(valid_loss_dict['loss'])
-                    except:
-                        assert 1 == 0, 'No scheduler'
+
                 if self.loop_indicator(e, valid_loss_dict['loss']):
-                    self.logger.log('Early Stop')
                     run.finish()
                     break
                 
-
             run.finish()
-            
         else:
             
             for e in range(self.epochs):
@@ -167,6 +164,8 @@ class Fitter:
                     break
                 
             self.logger.log('Finished')           
+         
+
 
     def train_one_epoch(self, loader):
 
@@ -206,8 +205,8 @@ class Fitter:
     def load(self, path, load_optimizer = True, load_scheduler = True):
         checkpoint = torch.load(path)
         self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.model.optimizer.load_state_dict(checkpoint['model_state_dict'])
-        self.model.scheduler.load_state_dict(checkpoint['model_state_dict'])
+        self.model.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.model.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         config = checkpoint['configuration']
 
         self.prep(config)
@@ -220,3 +219,5 @@ class Fitter:
         else:
             self.lr = lr
             self.optimizer.param_groups[0]['lr'] = self.lr
+
+
