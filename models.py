@@ -46,7 +46,7 @@ class MyModel(nn.Module):
         targets = targets.cuda()
 
 
-        with autocast():
+        with autocast(enabled=True):
             out = self(inputs) 
             loss = self.loss_fn(out, targets ) / self.accumulative_step
 
@@ -67,8 +67,11 @@ class MyModel(nn.Module):
 
     def validate(self, batch):
         # -------------------------------VALIDATE--------------------------- #
-        batch = batch.cuda()
         inputs, targets = batch
+
+        inputs = inputs.cuda()
+        targets = targets.cuda()
+        
         out = self(inputs) 
         loss = self.loss_fn(out, targets)   
         self.loss_log(loss, batch[0].size(0) )
